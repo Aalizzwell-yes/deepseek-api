@@ -635,8 +635,12 @@
   });
 
   // ========== 余额查询 ==========
+  // CORS 代理（解决浏览器跨域限制）
+  const CORS_PROXY = 'https://corsproxy.io/?';
+  const API_BASE = 'https://api.deepseek.com';
+
   async function fetchBalance(apiKey) {
-    const resp = await fetch('https://api.deepseek.com/user/balance', {
+    const resp = await fetch(CORS_PROXY + encodeURIComponent(API_BASE + '/user/balance'), {
       headers: { 'Authorization': `Bearer ${apiKey}` }
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -647,7 +651,7 @@
   async function fetchUsage(apiKey) {
     for (const url of USAGE_URLS) {
       try {
-        const resp = await fetch(url, {
+        const resp = await fetch(CORS_PROXY + encodeURIComponent(url), {
           headers: { 'Authorization': `Bearer ${apiKey}` },
           signal: AbortSignal.timeout(5000)
         });
@@ -792,8 +796,7 @@
 
       // 判断是否为 CORS 错误
       if (err.message.includes('Failed to fetch') || err.name === 'TypeError') {
-        setStatus('err', '浏览器限制，无法直接查询');
-        corsNotice.classList.add('visible');
+        setStatus('err', '网络错误，请检查网络连接');
       } else {
         setStatus('err', '查询失败：' + err.message);
       }
