@@ -488,7 +488,7 @@
       <!-- 动态填充模型用量 -->
     </div>
     <div class="usage-empty" id="usageEmpty" style="display:none;">
-      暂无用量数据，请前往控制台查看
+      用量数据请前往 DeepSeek 控制台查看
       <br>
       <a class="usage-link" href="https://platform.deepseek.com/usage" target="_blank" rel="noopener">查看用量</a>
     </div>
@@ -570,12 +570,21 @@
   let refreshTimer = null;
   let isQuerying = false;
 
+  // 多个 CORS 代理（按优先级）
+  const CORS_PROXIES = [
+    'https://corsproxy.io/?',
+    'https://api.allorigins.win/get?url=',
+    'https://api.codetabs.com/v1/proxy?quest='
+  ];
+
+  const API_BASE = 'https://api.deepseek.com';
+
   // 用量接口路径列表（按优先级）
   const USAGE_URLS = [
-    'https://api.deepseek.com/v1/usage',
-    'https://api.deepseek.com/user/usage',
-    'https://api.deepseek.com/organization/usage',
-    'https://api.deepseek.com/v1/billing/usage'
+    '/v1/usage',
+    '/user/usage',
+    '/organization/usage',
+    '/v1/billing/usage'
   ];
 
   // ========== 初始化 ==========
@@ -587,6 +596,7 @@
       startAutoRefresh();
     }
     registerSW();
+    setupNetworkListeners();
   }
 
   // ========== Service Worker 注册 ==========
@@ -594,6 +604,12 @@
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
+  }
+
+  // ========== 网络状态检测 ==========
+  function setupNetworkListeners() {
+    window.addEventListener('online', () => showToast('已连接到网络'));
+    window.addEventListener('offline', () => showToast('网络已断开'));
   }
 
   // ========== Toast 提示 ==========
@@ -634,34 +650,72 @@
     apiKeyInput.focus();
   });
 
-  // ========== 余额查询 ==========
-  // CORS 代理（解决浏览器跨域限制）
-  const CORS_PROXY = 'https://corsproxy.io/?';
-  const API_BASE = 'https://api.deepseek.com';
+  // ========== CORS 代理请求 ==========
+  async function fetchWithProxy(url, options, apiKey) {
+    const errors = [];
 
+    for (const proxy of CORS_PROXIES) {
+      try {
+        let fullUrl;
+        if (proxy.includes('allorigins')) {
+          // allorigins 需要特殊处理
+          fullUrl = proxy + encodeURIComponent(url);
+          console.log(`尝试代理: ${proxy}`);
+          const resp = await fetch(fullUrl, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            console.log(`代理 ${proxy} 成功`);
+            return data.contents ? JSON.parse(data.contents) : data;
+          }
+        } else {
+          fullUrl = proxy + encodeURIComponent(url);
+          console.log(`尝试代理: ${proxy}`);
+          const resp = await fetch(fullUrl, {
+            ...options,
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+          });
+          if (resp.ok) {
+            console.log(`代理 ${proxy} 成功`);
+            return resp.json();
+          }
+        }
+      } catch (e) {
+        errors.push(`${proxy}: ${e.message}`);
+        console.log(`代理 ${proxy} 失败:`, e.message);
+        continue;
+      }
+    }
+
+    console.error('所有代理都失败:', errors);
+    throw new Error('无法连接到服务器，请检查网络');
+  }
+
+  // ========== 余额查询 ==========
   async function fetchBalance(apiKey) {
-    const resp = await fetch(CORS_PROXY + encodeURIComponent(API_BASE + '/user/balance'), {
-      headers: { 'Authorization': `Bearer ${apiKey}` }
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    return resp.json();
+    console.log('开始查询余额...');
+    const data = await fetchWithProxy(API_BASE + '/user/balance', {}, apiKey);
+    console.log('余额数据:', data);
+    return data;
   }
 
   // 尝试获取用量数据
   async function fetchUsage(apiKey) {
-    for (const url of USAGE_URLS) {
+    console.log('开始查询用量...');
+
+    for (const path of USAGE_URLS) {
       try {
-        const resp = await fetch(CORS_PROXY + encodeURIComponent(url), {
-          headers: { 'Authorization': `Bearer ${apiKey}` },
-          signal: AbortSignal.timeout(5000)
-        });
-        if (resp.ok) {
-          return await resp.json();
-        }
+        const data = await fetchWithProxy(API_BASE + path, {}, apiKey);
+        console.log('用量数据:', data);
+        return data;
       } catch (e) {
-        // 继续尝试下一个URL
+        console.log(`用量接口 ${path} 失败:`, e.message);
+        continue;
       }
     }
+
     return null;
   }
 
@@ -794,12 +848,9 @@
       usageListEl.style.display = 'none';
       usageEmptyEl.style.display = 'block';
 
-      // 判断是否为 CORS 错误
-      if (err.message.includes('Failed to fetch') || err.name === 'TypeError') {
-        setStatus('err', '网络错误，请检查网络连接');
-      } else {
-        setStatus('err', '查询失败：' + err.message);
-      }
+      // 显示详细的错误信息
+      setStatus('err', '查询失败: ' + err.message);
+      showToast('查询失败: ' + err.message);
     } finally {
       svg.classList.remove('spin');
       isQuerying = false;
