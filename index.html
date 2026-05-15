@@ -254,6 +254,56 @@
       50% { opacity: 0.3; }
     }
 
+    /* ========== 用量卡片 ========== */
+    .usage-card { margin-top: 8px; }
+    .usage-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .usage-title { font-size: 13px; color: var(--text-secondary); }
+    .usage-amount {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent-orange);
+    }
+    .usage-list { display: flex; flex-direction: column; gap: 8px; }
+    .usage-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px;
+    }
+    .usage-item .model-name { font-size: 14px; }
+    .usage-item .model-stats {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-align: right;
+    }
+    .usage-empty {
+      text-align: center;
+      padding: 20px;
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+    .usage-link {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 8px 16px;
+      background: linear-gradient(135deg, var(--accent-purple), #8b5cf6);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 13px;
+      text-decoration: none;
+      transition: transform 0.15s, opacity 0.15s;
+    }
+    .usage-link:active {
+      transform: scale(0.95);
+      opacity: 0.85;
+    }
+
     /* ========== 操作按钮区域 ========== */
     .actions {
       display: flex;
@@ -428,6 +478,22 @@
     </div>
   </section>
 
+  <!-- 模型用量明细卡片 -->
+  <section class="card usage-card" id="usageCard">
+    <div class="usage-header">
+      <span class="usage-title">本月消费</span>
+      <span class="usage-amount" id="monthCost">--</span>
+    </div>
+    <div class="usage-list" id="usageList">
+      <!-- 动态填充模型用量 -->
+    </div>
+    <div class="usage-empty" id="usageEmpty" style="display:none;">
+      暂无用量数据，请前往控制台查看
+      <br>
+      <a class="usage-link" href="https://platform.deepseek.com/usage" target="_blank" rel="noopener">查看用量</a>
+    </div>
+  </section>
+
   <!-- CORS 提示 -->
   <div class="cors-notice" id="corsNotice">
     <strong>提示：</strong>由于浏览器安全限制（CORS），无法直接查询余额。请点击下方按钮前往 DeepSeek 控制台查看用量与余额信息。
@@ -496,10 +562,21 @@
   const keyManage = document.getElementById('keyManage');
   const btnChangeKey = document.getElementById('btnChangeKey');
   const toastEl = document.getElementById('toast');
+  const monthCostEl = document.getElementById('monthCost');
+  const usageListEl = document.getElementById('usageList');
+  const usageEmptyEl = document.getElementById('usageEmpty');
 
   const STORAGE_KEY = 'deepseek_api_key';
   let refreshTimer = null;
   let isQuerying = false;
+
+  // 用量接口路径列表（按优先级）
+  const USAGE_URLS = [
+    'https://api.deepseek.com/v1/usage',
+    'https://api.deepseek.com/user/usage',
+    'https://api.deepseek.com/organization/usage',
+    'https://api.deepseek.com/v1/billing/usage'
+  ];
 
   // ========== 初始化 ==========
   function init() {
@@ -566,6 +643,24 @@
     return resp.json();
   }
 
+  // 尝试获取用量数据
+  async function fetchUsage(apiKey) {
+    for (const url of USAGE_URLS) {
+      try {
+        const resp = await fetch(url, {
+          headers: { 'Authorization': `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(5000)
+        });
+        if (resp.ok) {
+          return await resp.json();
+        }
+      } catch (e) {
+        // 继续尝试下一个URL
+      }
+    }
+    return null;
+  }
+
   function setStatus(type, text) {
     statusText.textContent = text;
     const dot = balanceStatus.querySelector('.status-dot');
@@ -578,6 +673,67 @@
       balanceValue.textContent = val;
       balanceAmount.classList.remove('updating');
     }, 300);
+  }
+
+  function updateUsageUI(usageData) {
+    if (!usageData) {
+      // 没有获取到用量数据，显示空状态
+      monthCostEl.textContent = '--';
+      usageListEl.style.display = 'none';
+      usageEmptyEl.style.display = 'block';
+      return;
+    }
+
+    // 解析本月消费金额
+    let monthCost = 0;
+    const usageItems = [];
+
+    // 处理不同可能的返回格式
+    if (usageData.total_cost !== undefined) {
+      monthCost = parseFloat(usageData.total_cost) || 0;
+    } else if (usageData.month_cost !== undefined) {
+      monthCost = parseFloat(usageData.month_cost) || 0;
+    } else if (usageData.cost !== undefined) {
+      monthCost = parseFloat(usageData.cost) || 0;
+    }
+
+    monthCostEl.textContent = `¥${monthCost.toFixed(2)}`;
+
+    // 解析各模型用量
+    if (usageData.models && Array.isArray(usageData.models)) {
+      usageData.models.forEach(model => {
+        usageItems.push({
+          name: model.name || model.model || '未知模型',
+          tokens: model.tokens || model.total_tokens || 0,
+          cost: model.cost || 0
+        });
+      });
+    } else if (usageData.usage && Array.isArray(usageData.usage)) {
+      usageData.usage.forEach(item => {
+        usageItems.push({
+          name: item.model || item.name || '未知模型',
+          tokens: item.tokens || item.total_tokens || 0,
+          cost: item.cost || 0
+        });
+      });
+    }
+
+    if (usageItems.length > 0) {
+      usageListEl.innerHTML = usageItems.map(item => `
+        <div class="usage-item">
+          <span class="model-name">${item.name}</span>
+          <span class="model-stats">
+            ${item.tokens > 0 ? `${item.tokens.toLocaleString()} tokens` : ''}
+            ${item.cost > 0 ? `<br>¥${item.cost.toFixed(2)}` : ''}
+          </span>
+        </div>
+      `).join('');
+      usageListEl.style.display = 'flex';
+      usageEmptyEl.style.display = 'none';
+    } else {
+      usageListEl.style.display = 'none';
+      usageEmptyEl.style.display = 'block';
+    }
   }
 
   function formatTime(date) {
@@ -603,16 +759,37 @@
     corsNotice.classList.remove('visible');
 
     try {
-      const data = await fetchBalance(apiKey);
-      // DeepSeek 返回格式：{ balance_infos: { is_available: true, balance: 0.01, total_balance: 100 } }
-      const info = data.balance_infos || data;
-      const balance = info.balance ?? info.total_balance ?? '--';
-      setBalance(typeof balance === 'number' ? balance.toFixed(2) : balance);
-      setStatus('ok', '查询成功');
+      // 并行查询余额和用量
+      const [balanceData, usageData] = await Promise.all([
+        fetchBalance(apiKey),
+        fetchUsage(apiKey)
+      ]);
+
+      // 修复余额解析逻辑 - DeepSeek API 返回格式
+      const info = balanceData.balance_infos?.[0] || {};
+      const total = parseFloat(info.total_balance || 0);
+      const granted = parseFloat(info.granted_balance || 0);
+      const topped = parseFloat(info.topped_up_balance || 0);
+
+      setBalance(total.toFixed(2));
+
+      // 构建状态文字
+      const statusStr = balanceData.is_available
+        ? `账户正常 | 赠送 ¥${granted.toFixed(2)} | 充值 ¥${topped.toFixed(2)}`
+        : `账户异常 | 赠送 ¥${granted.toFixed(2)} | 充值 ¥${topped.toFixed(2)}`;
+      setStatus(balanceData.is_available ? 'ok' : 'err', statusStr);
+
+      // 更新用量UI
+      updateUsageUI(usageData);
+
       lastUpdate.textContent = '最后更新：' + formatTime(new Date());
     } catch (err) {
       console.error('查询失败:', err);
       setBalance('--');
+      monthCostEl.textContent = '--';
+      usageListEl.style.display = 'none';
+      usageEmptyEl.style.display = 'block';
+
       // 判断是否为 CORS 错误
       if (err.message.includes('Failed to fetch') || err.name === 'TypeError') {
         setStatus('err', '浏览器限制，无法直接查询');
