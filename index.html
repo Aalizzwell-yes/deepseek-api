@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>DeepSeek 监控平台</title>
+
+  <!-- iOS PWA 支持 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="DeepSeek">
+  <meta name="theme-color" content="#1a1a2e">
+
+  <!-- 图标 -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <style>
+    /* ========== 基础重置与全局样式 ========== */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --bg: #1a1a2e;
+      --card: rgba(255, 255, 255, 0.08);
+      --card-border: rgba(255, 255, 255, 0.15);
+      --accent-blue: #4a9eff;
+      --accent-purple: #b47aff;
+      --accent-orange: #ff9f43;
+      --accent-green: #4cd964;
+      --text-primary: #ffffff;
+      --text-secondary: rgba(255, 255, 255, 0.6);
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ========== 背景装饰 ========== */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -40%;
+      left: -20%;
+      width: 80%;
+      height: 80%;
+      background: radial-gradient(circle, rgba(74, 158, 255, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -30%;
+      right: -20%;
+      width: 70%;
+      height: 70%;
+      background: radial-gradient(circle, rgba(180, 122, 255, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ========== 主容器 ========== */
+    .app {
+      position: relative;
+      z-index: 1;
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100%;
+      padding: calc(var(--safe-top) + 16px) 16px calc(var(--safe-bottom) + 24px);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ========== 标题栏 ========== */
+    .header {
+      text-align: center;
+      padding: 8px 0 4px;
+      animation: fadeIn 0.6s ease;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ========== 通用卡片样式 ========== */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      animation: fadeIn 0.6s ease both;
+    }
+
+    .card:nth-child(2) { animation-delay: 0.05s; }
+    .card:nth-child(3) { animation-delay: 0.1s; }
+    .card:nth-child(4) { animation-delay: 0.15s; }
+    .card:nth-child(5) { animation-delay: 0.2s; }
+
+    /* ========== API Key 输入区域 ========== */
+    .key-section label {
+      display: block;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+
+    .key-input-wrap {
+      display: flex;
+      gap: 10px;
+    }
+
+    .key-input-wrap input {
+      flex: 1;
+      height: 48px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      padding: 0 16px;
+      font-size: 14px;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.3s;
+    }
+
+    .key-input-wrap input::placeholder {
+      color: rgba(255, 255, 255, 0.3);
+    }
+
+    .key-input-wrap input:focus {
+      border-color: var(--accent-blue);
+    }
+
+    .btn-save {
+      height: 48px;
+      padding: 0 20px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s, opacity 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-save:active {
+      transform: scale(0.95);
+      opacity: 0.85;
+    }
+
+    /* ========== 余额卡片 ========== */
+    .balance-card {
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .balance-card::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: conic-gradient(
+        from 0deg,
+        transparent 0%,
+        rgba(74, 158, 255, 0.05) 25%,
+        transparent 50%,
+        rgba(180, 122, 255, 0.05) 75%,
+        transparent 100%
+      );
+      animation: rotateBg 12s linear infinite;
+      pointer-events: none;
+    }
+
+    @keyframes rotateBg {
+      to { transform: rotate(360deg); }
+    }
+
+    .balance-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      position: relative;
+    }
+
+    .balance-amount {
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      transition: opacity 0.4s, transform 0.4s;
+      position: relative;
+    }
+
+    .balance-amount.updating {
+      opacity: 0.3;
+      transform: scale(0.97);
+    }
+
+    .balance-currency {
+      font-size: 18px;
+      font-weight: 400;
+      color: var(--text-secondary);
+      margin-right: 4px;
+    }
+
+    .balance-status {
+      margin-top: 10px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      position: relative;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .status-dot.ok { background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green); }
+    .status-dot.err { background: #ff5252; box-shadow: 0 0 6px #ff5252; }
+    .status-dot.loading { background: var(--accent-orange); animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* ========== 操作按钮区域 ========== */
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn-primary {
+      width: 100%;
+      height: 48px;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform 0.15s, opacity 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary:active {
+      transform: scale(0.96);
+      opacity: 0.85;
+    }
+
+    .btn-query {
+      background: linear-gradient(135deg, var(--accent-blue), #3a7bd5);
+    }
+
+    .btn-usage {
+      background: linear-gradient(135deg, var(--accent-purple), #8b5cf6);
+    }
+
+    .btn-bills {
+      background: linear-gradient(135deg, var(--accent-orange), #e67e22);
+    }
+
+    .btn-keys {
+      background: linear-gradient(135deg, var(--accent-green), #27ae60);
+    }
+
+    .btn-primary svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    .btn-primary .spin {
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ========== CORS 提示 ========== */
+    .cors-notice {
+      display: none;
+      background: rgba(255, 149, 0, 0.1);
+      border: 1px solid rgba(255, 149, 0, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: rgba(255, 255, 255, 0.8);
+      animation: fadeIn 0.4s ease;
+    }
+
+    .cors-notice.visible { display: block; }
+
+    .cors-notice strong {
+      color: var(--accent-orange);
+    }
+
+    /* ========== 底部状态栏 ========== */
+    .footer {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-secondary);
+      padding: 8px 0;
+      animation: fadeIn 0.6s ease 0.3s both;
+    }
+
+    .footer .auto-refresh {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    /* ========== Toast 提示 ========== */
+    .toast {
+      position: fixed;
+      top: calc(var(--safe-top) + 16px);
+      left: 50%;
+      transform: translateX(-50%) translateY(-120%);
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 14px;
+      z-index: 999;
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ========== 动画 ========== */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ========== 隐藏已保存 Key 的卡片 ========== */
+    .key-section.hidden { display: none; }
+
+    /* ========== Key 管理按钮 ========== */
+    .key-manage {
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    .btn-text {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+  <!-- 标题栏 -->
+  <header class="header">
+    <h1>DeepSeek 监控平台</h1>
+  </header>
+
+  <!-- API Key 输入 -->
+  <section class="card key-section" id="keySection">
+    <label for="apiKeyInput">请输入您的 DeepSeek API Key</label>
+    <div class="key-input-wrap">
+      <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off">
+      <button class="btn-save" id="btnSaveKey">保存</button>
+    </div>
+  </section>
+
+  <!-- 余额卡片 -->
+  <section class="card balance-card" id="balanceCard">
+    <div class="balance-label">账户余额</div>
+    <div class="balance-amount" id="balanceAmount">
+      <span class="balance-currency">¥</span><span id="balanceValue">--</span>
+    </div>
+    <div class="balance-status" id="balanceStatus">
+      <span class="status-dot loading"></span>
+      <span id="statusText">等待查询</span>
+    </div>
+  </section>
+
+  <!-- CORS 提示 -->
+  <div class="cors-notice" id="corsNotice">
+    <strong>提示：</strong>由于浏览器安全限制（CORS），无法直接查询余额。请点击下方按钮前往 DeepSeek 控制台查看用量与余额信息。
+  </div>
+
+  <!-- 操作按钮 -->
+  <section class="card actions">
+    <button class="btn-primary btn-query" id="btnQuery">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+      </svg>
+      <span>查询余额</span>
+    </button>
+    <a class="btn-primary btn-usage" href="https://platform.deepseek.com/usage" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 20V10"></path><path d="M12 20V4"></path><path d="M6 20v-6"></path>
+      </svg>
+      <span>用量统计</span>
+    </a>
+    <a class="btn-primary btn-bills" href="https://platform.deepseek.com/transactions" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+        <line x1="1" y1="10" x2="23" y2="10"></line>
+      </svg>
+      <span>账单明细</span>
+    </a>
+    <a class="btn-primary btn-keys" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+      </svg>
+      <span>API Keys</span>
+    </a>
+  </section>
+
+  <!-- Key 管理（已保存时显示） -->
+  <div class="key-manage" id="keyManage" style="display:none;">
+    <button class="btn-text" id="btnChangeKey">更换 API Key</button>
+  </div>
+
+  <!-- 底部状态栏 -->
+  <footer class="footer">
+    <div id="lastUpdate">尚未更新</div>
+    <div class="auto-refresh">自动刷新：每 5 分钟</div>
+  </footer>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ========== DOM 引用 ==========
+  const keySection = document.getElementById('keySection');
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  const btnSaveKey = document.getElementById('btnSaveKey');
+  const btnQuery = document.getElementById('btnQuery');
+  const balanceAmount = document.getElementById('balanceAmount');
+  const balanceValue = document.getElementById('balanceValue');
+  const balanceStatus = document.getElementById('balanceStatus');
+  const statusText = document.getElementById('statusText');
+  const corsNotice = document.getElementById('corsNotice');
+  const lastUpdate = document.getElementById('lastUpdate');
+  const keyManage = document.getElementById('keyManage');
+  const btnChangeKey = document.getElementById('btnChangeKey');
+  const toastEl = document.getElementById('toast');
+
+  const STORAGE_KEY = 'deepseek_api_key';
+  let refreshTimer = null;
+  let isQuerying = false;
+
+  // ========== 初始化 ==========
+  function init() {
+    const savedKey = localStorage.getItem(STORAGE_KEY);
+    if (savedKey) {
+      hideKeySection();
+      autoQuery();
+      startAutoRefresh();
+    }
+    registerSW();
+  }
+
+  // ========== Service Worker 注册 ==========
+  function registerSW() {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  }
+
+  // ========== Toast 提示 ==========
+  function showToast(msg, duration = 2500) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    setTimeout(() => toastEl.classList.remove('show'), duration);
+  }
+
+  // ========== Key 管理 ==========
+  function hideKeySection() {
+    keySection.classList.add('hidden');
+    keyManage.style.display = 'block';
+  }
+
+  function showKeySection() {
+    keySection.classList.remove('hidden');
+    keyManage.style.display = 'none';
+  }
+
+  btnSaveKey.addEventListener('click', () => {
+    const key = apiKeyInput.value.trim();
+    if (!key) {
+      showToast('请输入 API Key');
+      return;
+    }
+    localStorage.setItem(STORAGE_KEY, key);
+    showToast('已保存');
+    hideKeySection();
+    autoQuery();
+    startAutoRefresh();
+  });
+
+  btnChangeKey.addEventListener('click', () => {
+    stopAutoRefresh();
+    showKeySection();
+    apiKeyInput.value = '';
+    apiKeyInput.focus();
+  });
+
+  // ========== 余额查询 ==========
+  async function fetchBalance(apiKey) {
+    const resp = await fetch('https://api.deepseek.com/user/balance', {
+      headers: { 'Authorization': `Bearer ${apiKey}` }
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+  }
+
+  function setStatus(type, text) {
+    statusText.textContent = text;
+    const dot = balanceStatus.querySelector('.status-dot');
+    dot.className = 'status-dot ' + type;
+  }
+
+  function setBalance(val) {
+    balanceAmount.classList.add('updating');
+    setTimeout(() => {
+      balanceValue.textContent = val;
+      balanceAmount.classList.remove('updating');
+    }, 300);
+  }
+
+  function formatTime(date) {
+    const h = String(date.getHours()).padStart(2, '0');
+    const m = String(date.getMinutes()).padStart(2, '0');
+    const s = String(date.getSeconds()).padStart(2, '0');
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${h}:${m}:${s}`;
+  }
+
+  async function queryBalance() {
+    const apiKey = localStorage.getItem(STORAGE_KEY);
+    if (!apiKey) {
+      showToast('请先设置 API Key');
+      return;
+    }
+    if (isQuerying) return;
+    isQuerying = true;
+
+    // 刷新图标旋转
+    const svg = btnQuery.querySelector('svg');
+    svg.classList.add('spin');
+    setStatus('loading', '查询中...');
+    corsNotice.classList.remove('visible');
+
+    try {
+      const data = await fetchBalance(apiKey);
+      // DeepSeek 返回格式：{ balance_infos: { is_available: true, balance: 0.01, total_balance: 100 } }
+      const info = data.balance_infos || data;
+      const balance = info.balance ?? info.total_balance ?? '--';
+      setBalance(typeof balance === 'number' ? balance.toFixed(2) : balance);
+      setStatus('ok', '查询成功');
+      lastUpdate.textContent = '最后更新：' + formatTime(new Date());
+    } catch (err) {
+      console.error('查询失败:', err);
+      setBalance('--');
+      // 判断是否为 CORS 错误
+      if (err.message.includes('Failed to fetch') || err.name === 'TypeError') {
+        setStatus('err', '浏览器限制，无法直接查询');
+        corsNotice.classList.add('visible');
+      } else {
+        setStatus('err', '查询失败：' + err.message);
+      }
+    } finally {
+      svg.classList.remove('spin');
+      isQuerying = false;
+    }
+  }
+
+  function autoQuery() {
+    queryBalance();
+  }
+
+  // ========== 自动刷新 ==========
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    refreshTimer = setInterval(queryBalance, 5 * 60 * 1000);
+  }
+
+  function stopAutoRefresh() {
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
+    }
+  }
+
+  // ========== 手动查询 ==========
+  btnQuery.addEventListener('click', queryBalance);
+
+  // ========== 启动 ==========
+  init();
+})();
+</script>
+
+</body>
+</html>
